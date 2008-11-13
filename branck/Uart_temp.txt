@@ -1,0 +1,106 @@
+//===================================================================
+//用串口0与单片机通信
+//--------------------------------------------
+void CommunInit(void)
+{
+    U32 pclk= 200000000/4;
+    U32 baud=9600,i;
+
+ /*********** UART0 Rx interrupt ***********/
+
+    rULCON0 = 0x3;   							//Line control register : Normal,No parity,1 stop,8 bits
+    rUCON0  = 0x145;                        	// Control register
+    rUBRDIV0=( (int)(pclk/16./baud+0.5) -1 );   //Baud rate divisior register 0    
+    
+    for(i=0;i<1000;i++);
+    
+    Uart_TxEmpty(0);
+    
+    pISR_UART0 =(U32)Com_RxService;   
+ 
+    rINTMOD   &=~(BIT_UART0);      //中断模式设为IRQ模式
+    
+    rINTMSK   &=~(BIT_UART0);		//取消中断及子中断屏蔽,按固定优先级
+    rINTSUBMSK&=~(BIT_SUB_RXD0);	// Clear Int Pending and Unmask  
+     
+    ClearPending(BIT_UART0);        
+    rSUBSRCPND|=(BIT_SUB_RXD0);    //设定中断源// Clear Sub int pending  
+
+}
+
+//接收用中断
+void __irq Com_RxService(void)
+{
+    char c,i;
+    U32 temp;
+  
+   rINTMSK|=(BIT_UART0);       //置1,mask
+   rINTSUBMSK|=(BIT_SUB_RXD0);
+ 
+   /* 此处本来应该有个复杂的妨错过程,此处只有假定无错了... */
+  //为妨错每次固定接收8个字符,作为一次通信.仍不能避免出错的,而且一次出错影响后面的等等.
+   
+	   c=Uart_Getch();
+	   if(c=='r'||c=='k')
+	   		number=0;
+	   		
+	   RxBuffer[number++]=c;
+	      	            
+       Uart_Printf("%c ",c);
+
+	
+//==========按键处理=======DOWN===格式:keyx(共4个字符/次,x=1,2,3,4)=======================          
+
+    if(RxBuffer[0]=='k'&&number==4)
+       {
+          number=0;
+          Uart_Printf("RxBuffer %s \n",RxBuffer);
+          switch(RxBuffer[3]-'0')
+    	    {
+    	     case 1:
+    	     case 3:
+	    	        H++;
+	    	        if(H>9)H=0;
+	    	        break;
+	    	 case 2:
+	    	 case 4:
+	    	        H--;
+	    	        if(H<0)H=9;
+	    	        break;
+	    	 default:
+	    	 		 H=H;        //若非以上值,则不变
+    				 break;
+    	    }//end of switch	
+    	    	
+         Uart_Printf("H is:%d.\n",H);  
+          	    	 
+       }//end ofif
+
+          
+//==========按键处理=======UP====================================================              
+//========寄存器值处理====DOWN===格式:RxxVxxxxH(16进制)=============  
+   if(RxBuffer[0]=='r'&&number==8)
+       {
+          number=0;
+          Uart_Printf("RxBuffer %s \n",RxBuffer);
+#if   0		  
+ 	 	 void () //处理16进制数据,并发送,用函数包装好.
+#endif              
+      
+       }
+        
+//==========寄存器值处理=======UP====================       
+   if(number==8) number=0;     //非 key,非 R;则number保持0;
+          
+
+   ClearPending(BIT_UART0);
+   rSUBSRCPND|=(BIT_SUB_RXD0);	// Clear Sub int pending  
+             
+    rINTMSK&=~(BIT_UART0);    //不再mask
+    rINTSUBMSK&=~(BIT_SUB_RXD0);
+    
+
+}
+
+
+//===============================================================================
